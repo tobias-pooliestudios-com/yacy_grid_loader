@@ -45,6 +45,11 @@ data/
 .DS_Store
 .settings
 .idea/
+*.log
 
 config-loader.properties
 log4j.properties
+
+# nix direnv setup #
+####################
+.direnv/
