@@ -240,6 +240,15 @@ public class ContentLoader {
         String requestHeaders = ac.getRequestHeader().toString();
         String responseHeaders = ac.getResponseHeader().toString();
 
+        boolean skipPDF = false;
+        if (Service.instance.config.properties.containsKey("grid.loader.skipPDF")) {
+          skipPDF = Service.instance.config.properties.get("grid.loader.skipPDF").equals("true");
+        }
+
+        if (ac.getMime().endsWith("pdf") && skipPDF) {
+          return false;
+        }
+
         final MultiProtocolURL u = new MultiProtocolURL(url);
         if (useHeadlessLoader && (ac.getMime().endsWith("/html") || ac.getMime().endsWith("/xhtml+xml") || u.getContentDomainFromExt() == ContentDomain.TEXT)) try {
             // use htmlunit to load this
