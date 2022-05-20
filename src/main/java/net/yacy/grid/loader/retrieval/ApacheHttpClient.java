@@ -48,6 +48,7 @@ import org.apache.http.RequestLine;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpHead;
 import org.apache.http.client.methods.HttpRequestBase;
+import org.apache.http.client.protocol.HttpClientContext;
 import org.apache.http.config.Registry;
 import org.apache.http.config.RegistryBuilder;
 import org.apache.http.conn.ConnectionKeepAliveStrategy;
@@ -69,6 +70,7 @@ import org.apache.http.util.EntityUtils;
 
 import net.yacy.grid.http.ClientConnection;
 import net.yacy.grid.http.ClientIdentification;
+import net.yacy.grid.mcp.Service;
 import net.yacy.grid.tools.Logger;
 
 public class ApacheHttpClient implements HttpClient {
@@ -127,19 +129,22 @@ public class ApacheHttpClient implements HttpClient {
         request.setHeader("User-Agent", userAgentDefault);
         request.setHeader("Accept", "text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2");
 
-        // compute the request header (we do this to have a documentation later of what we did)
+        // compute the request header (we do this to have a documentation later of what
+        // we did)
         StringBuffer sb = new StringBuffer();
         RequestLine status = request.getRequestLine();
         sb.append(status.toString()).append(CRLF);
-        for (Header h: request.getAllHeaders()) {
+        for (Header h : request.getAllHeaders()) {
             sb.append(h.getName()).append(": ").append(h.getValue()).append(CRLF);
         }
         sb.append(CRLF);
         this.requestHeader = sb.toString();
 
+        HttpClientContext context = HttpClientContext.create();
+
         // do the request
         try {
-            httpResponse = httpClient.execute(request);
+            httpResponse = httpClient.execute(request, context);
         } catch (UnknownHostException e) {
             request.releaseConnection();
             throw new IOException("client connection failed: unknown host " + request.getURI().getHost());
@@ -158,12 +163,28 @@ public class ApacheHttpClient implements HttpClient {
         } finally {
             if (httpResponse != null) {
                 this.status_code = httpResponse.getStatusLine().getStatusCode();
+
+                String destinationHost = context.getTargetHost().getHostName();
+                String requestHost = request.getURI().getHost();
+
+                boolean skipExternalRedirect = false;
+                if (Service.instance.config.properties.containsKey("grid.loader.skipExternalRedirect")) {
+                    skipExternalRedirect = Service.instance.config.properties.get("grid.loader.skipExternalRedirect")
+                            .equals("true");
+                }
+
+                if (skipExternalRedirect && (destinationHost != requestHost)) {
+                    request.releaseConnection();
+                    throw new IOException("redirecting an external site " + requestHost + " ->" + destinationHost);
+                }
+
                 HttpEntity httpEntity = httpResponse.getEntity();
                 if (head || this.status_code != 200) {
                     EntityUtils.consumeQuietly(httpEntity);
                     if (!head && this.status_code != 200) {
                         request.releaseConnection();
-                        throw new IOException("client connection to " + url + " fail (status code " + this.status_code + "): " + httpResponse.getStatusLine().getReasonPhrase());
+                        throw new IOException("client connection to " + url + " fail (status code " + this.status_code
+                                + "): " + httpResponse.getStatusLine().getReasonPhrase());
                     }
                 } else {
                     try {
